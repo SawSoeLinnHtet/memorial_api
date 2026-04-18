@@ -4,9 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\ApiKey;
 use App\Models\Collection;
-use App\Services\GoogleDriveService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class ApiKeyProtectedApiTest extends TestCase
@@ -33,31 +33,31 @@ class ApiKeyProtectedApiTest extends TestCase
         ]);
     }
 
-    public function test_featured_image_upload_stores_google_drive_url(): void
+    public function test_featured_image_upload_stores_local_storage_url(): void
     {
+        Storage::fake('public');
+
         $collection = Collection::query()->create([
             'description' => 'Grandparents',
         ]);
 
-        $this->mock(GoogleDriveService::class, function ($mock): void {
-            $mock->shouldReceive('upload')
-                ->once()
-                ->andReturn('https://drive.google.com/uc?id=file123');
-        });
-
-        $this->postJson('/api/featured-images', [
+        $response = $this->postJson('/api/featured-images', [
             'memory_text' => 'A day we remember',
             'collection_id' => $collection->id,
             'image' => UploadedFile::fake()->image('memory.jpg'),
             'memorial_date' => '2026-04-18',
         ], $this->apiHeaders())
-            ->assertCreated()
-            ->assertJsonPath('image_url', 'https://drive.google.com/uc?id=file123');
+            ->assertCreated();
+
+        $imageUrl = $response->json('image_url');
+
+        $this->assertStringStartsWith('/storage/featured-images/', $imageUrl);
+        Storage::disk('public')->assertExists(str_replace('/storage/', '', $imageUrl));
 
         $this->assertDatabaseHas('featured_images', [
             'memory_text' => 'A day we remember',
             'collection_id' => $collection->id,
-            'image_url' => 'https://drive.google.com/uc?id=file123',
+            'image_url' => $imageUrl,
             'memorial_date' => '2026-04-18',
         ]);
     }

@@ -28,6 +28,8 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'frontend_api_key' => env('FRONTEND_API_KEY'),
+
     'google_drive' => [
         'folder_id' => env('GOOGLE_DRIVE_FOLDER_ID'),
         'credentials_path' => env('GOOGLE_DRIVE_CREDENTIALS_PATH'),

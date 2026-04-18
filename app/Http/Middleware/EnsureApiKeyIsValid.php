@@ -22,6 +22,12 @@ class EnsureApiKeyIsValid
             return response()->json(['message' => 'API key is required.'], Response::HTTP_UNAUTHORIZED);
         }
 
+        $frontendApiKey = config('services.frontend_api_key');
+
+        if ($frontendApiKey && hash_equals($frontendApiKey, $plainKey)) {
+            return $next($request);
+        }
+
         $apiKey = ApiKey::query()
             ->where('key_hash', hash('sha256', $plainKey))
             ->first();

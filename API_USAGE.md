@@ -5,13 +5,18 @@
 ```bash
 cd /Users/sawsoelinnhtet/Documents/Codex/2026-04-18-please-make-laravel-api-project-which/memorial-api
 php artisan key:generate
-touch database/database.sqlite
 php artisan migrate
-php artisan api:key:generate frontend
+php artisan api:key:generate
 php artisan serve
 ```
 
-Use the generated key from the frontend as either:
+The command saves one key to `.env`:
+
+```dotenv
+FRONTEND_API_KEY=memorial_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Use that key from the frontend as either:
 
 ```http
 X-API-Key: memorial_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -23,21 +28,21 @@ or:
 Authorization: Bearer memorial_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-The plain key is shown once. The database stores only its SHA-256 hash.
+Run `php artisan api:key:generate` only when you want to replace the frontend key.
 
-## Google Drive
+## File Storage
 
-Create a Google Cloud service account, enable the Google Drive API, download the service account JSON, and share your target Drive folder with the service account email.
+Uploaded photos are stored in Laravel public storage under:
 
-Add these values to `.env`:
-
-```dotenv
-GOOGLE_DRIVE_FOLDER_ID=your_folder_id
-GOOGLE_DRIVE_CREDENTIALS_PATH=/absolute/path/to/service-account.json
-GOOGLE_DRIVE_MAKE_PUBLIC=true
+```text
+storage/app/public/featured-images
 ```
 
-You can use `GOOGLE_DRIVE_CREDENTIALS_JSON` instead of `GOOGLE_DRIVE_CREDENTIALS_PATH`, but a file path is easier locally.
+Run this once so public URLs work:
+
+```bash
+php artisan storage:link
+```
 
 ## Endpoints
 
@@ -81,7 +86,7 @@ image=@/path/to/photo.jpg
 memorial_date=2026-04-18
 ```
 
-The API uploads `image` to Google Drive, then saves only the returned URL in `featured_images.image_url`.
+The API stores `image` in Laravel public storage, then saves only the public URL in `featured_images.image_url`.
 
 Example curl:
 

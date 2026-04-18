@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\FeaturedImage;
-use App\Services\GoogleDriveService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Storage;
 
 class FeaturedImageController extends Controller
 {
@@ -23,7 +23,7 @@ class FeaturedImageController extends Controller
         return response()->json($featuredImages);
     }
 
-    public function store(Request $request, GoogleDriveService $googleDrive)
+    public function store(Request $request)
     {
         $validated = $request->validate([
             'memory_text' => ['required', 'string', 'max:10000'],
@@ -32,7 +32,8 @@ class FeaturedImageController extends Controller
             'memorial_date' => ['required', 'date'],
         ]);
 
-        $validated['image_url'] = $googleDrive->upload($request->file('image'));
+        $path = $request->file('image')->store('featured-images', 'public');
+        $validated['image_url'] = Storage::disk('public')->url($path);
         unset($validated['image']);
 
         $featuredImage = FeaturedImage::query()->create($validated);
@@ -45,7 +46,7 @@ class FeaturedImageController extends Controller
         return response()->json($featuredImage->load('collection'));
     }
 
-    public function update(Request $request, FeaturedImage $featuredImage, GoogleDriveService $googleDrive)
+    public function update(Request $request, FeaturedImage $featuredImage)
     {
         $validated = $request->validate([
             'memory_text' => ['sometimes', 'required', 'string', 'max:10000'],
@@ -55,7 +56,8 @@ class FeaturedImageController extends Controller
         ]);
 
         if ($request->hasFile('image')) {
-            $validated['image_url'] = $googleDrive->upload($request->file('image'));
+            $path = $request->file('image')->store('featured-images', 'public');
+            $validated['image_url'] = Storage::disk('public')->url($path);
         }
 
         unset($validated['image']);

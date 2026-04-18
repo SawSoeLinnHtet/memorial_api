@@ -2,14 +2,13 @@
 
 namespace App\Console\Commands;
 
-use App\Models\ApiKey;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
-#[Signature('api:key:generate {name=frontend : Friendly name for this API key}')]
-#[Description('Generate a frontend API key and store only its SHA-256 hash.')]
+#[Signature('api:key:generate')]
+#[Description('Generate one frontend API key and save it to .env.')]
 class GenerateApiKey extends Command
 {
     /**
@@ -19,14 +18,26 @@ class GenerateApiKey extends Command
     {
         $plainKey = 'memorial_'.Str::random(48);
 
-        ApiKey::query()->create([
-            'name' => $this->argument('name'),
-            'key_hash' => hash('sha256', $plainKey),
-        ]);
+        $this->writeEnvValue('FRONTEND_API_KEY', $plainKey);
 
-        $this->info('API key generated. Save this value now; it will not be shown again.');
+        $this->info('API key generated and saved to .env as FRONTEND_API_KEY.');
         $this->line($plainKey);
 
         return self::SUCCESS;
+    }
+
+    private function writeEnvValue(string $key, string $value): void
+    {
+        $path = base_path('.env');
+        $contents = file_exists($path) ? file_get_contents($path) : '';
+        $line = $key.'='.$value;
+
+        if (preg_match("/^{$key}=.*$/m", $contents)) {
+            $contents = preg_replace("/^{$key}=.*$/m", $line, $contents);
+        } else {
+            $contents = rtrim($contents).PHP_EOL.PHP_EOL.$line.PHP_EOL;
+        }
+
+        file_put_contents($path, $contents);
     }
 }

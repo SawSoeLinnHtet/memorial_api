@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\RequestException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
 use RuntimeException;
@@ -27,28 +28,33 @@ class GoogleDriveService
             'parents' => [$folderId],
         ];
 
-        $response = $this->client->post('https://www.googleapis.com/upload/drive/v3/files', [
-            'headers' => [
-                'Authorization' => 'Bearer '.$accessToken,
-            ],
-            'query' => [
+        try {
+            $response = $this->client->post('https://www.googleapis.com/upload/drive/v3/files', [
+                'headers' => [
+                    'Authorization' => 'Bearer '.$accessToken,
+                ],
+                'query' => [
                 'uploadType' => 'multipart',
                 'fields' => 'id,name,webViewLink,webContentLink',
+                'supportsAllDrives' => 'true',
             ],
-            'multipart' => [
-                [
-                    'name' => 'metadata',
-                    'contents' => json_encode($metadata, JSON_THROW_ON_ERROR),
-                    'headers' => ['Content-Type' => 'application/json; charset=UTF-8'],
+                'multipart' => [
+                    [
+                        'name' => 'metadata',
+                        'contents' => json_encode($metadata, JSON_THROW_ON_ERROR),
+                        'headers' => ['Content-Type' => 'application/json; charset=UTF-8'],
+                    ],
+                    [
+                        'name' => 'file',
+                        'contents' => fopen($file->getRealPath(), 'r'),
+                        'filename' => $file->getClientOriginalName(),
+                        'headers' => ['Content-Type' => $file->getMimeType() ?: 'application/octet-stream'],
+                    ],
                 ],
-                [
-                    'name' => 'file',
-                    'contents' => fopen($file->getRealPath(), 'r'),
-                    'filename' => $file->getClientOriginalName(),
-                    'headers' => ['Content-Type' => $file->getMimeType() ?: 'application/octet-stream'],
-                ],
-            ],
-        ]);
+            ]);
+        } catch (RequestException $exception) {
+            throw new RuntimeException($this->googleErrorMessage($exception), previous: $exception);
+        }
 
         $uploaded = json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
 
@@ -85,12 +91,16 @@ class GoogleDriveService
 
         $jwt = $unsignedJwt.'.'.$this->base64UrlEncode($signature);
 
-        $response = $this->client->post('https://oauth2.googleapis.com/token', [
-            'form_params' => [
-                'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-                'assertion' => $jwt,
-            ],
-        ]);
+        try {
+            $response = $this->client->post('https://oauth2.googleapis.com/token', [
+                'form_params' => [
+                    'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                    'assertion' => $jwt,
+                ],
+            ]);
+        } catch (RequestException $exception) {
+            throw new RuntimeException($this->googleErrorMessage($exception), previous: $exception);
+        }
 
         $token = json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
 
@@ -116,25 +126,49 @@ class GoogleDriveService
             }
         }
 
+        if (! str_contains($credentials['private_key'], '-----BEGIN PRIVATE KEY-----')) {
+            throw new RuntimeException('Google Drive private_key is invalid. Use the full private_key from a Google service account JSON file.');
+        }
+
         return $credentials;
     }
 
     private function makePublic(string $accessToken, string $fileId): void
     {
-        $this->client->post("https://www.googleapis.com/drive/v3/files/{$fileId}/permissions", [
-            'headers' => [
-                'Authorization' => 'Bearer '.$accessToken,
-                'Content-Type' => 'application/json',
-            ],
-            'json' => [
-                'role' => 'reader',
-                'type' => 'anyone',
-            ],
-        ]);
+        try {
+            $this->client->post("https://www.googleapis.com/drive/v3/files/{$fileId}/permissions", [
+                'headers' => [
+                    'Authorization' => 'Bearer '.$accessToken,
+                    'Content-Type' => 'application/json',
+                ],
+                'query' => [
+                    'supportsAllDrives' => 'true',
+                ],
+                'json' => [
+                    'role' => 'reader',
+                    'type' => 'anyone',
+                ],
+            ]);
+        } catch (RequestException $exception) {
+            throw new RuntimeException($this->googleErrorMessage($exception), previous: $exception);
+        }
     }
 
     private function base64UrlEncode(string $value): string
     {
         return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+    }
+
+    private function googleErrorMessage(RequestException $exception): string
+    {
+        $body = $exception->getResponse() ? (string) $exception->getResponse()->getBody() : '';
+        $payload = $body ? json_decode($body, true) : null;
+        $message = data_get($payload, 'error.message', $exception->getMessage());
+
+        if (str_contains($message, 'Service Accounts do not have storage quota')) {
+            return 'Google Drive upload failed because service accounts do not have storage quota. Use a Shared Drive folder or switch to user OAuth credentials for a personal Drive.';
+        }
+
+        return 'Google Drive upload failed: '.$message;
     }
 }
